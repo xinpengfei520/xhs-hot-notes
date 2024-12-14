@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const status = document.getElementById('status');
     
     let currentFile = null;
+    let serverFilename = null;
     
     // 文件选择
     selectButton.addEventListener('click', () => fileInput.click());
@@ -40,14 +41,31 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             if (data.error) {
                 showStatus(data.error, 'error');
+                // 上传失败时重置状态
+                currentFile = null;
+                serverFilename = null;
+                fileInfo.style.display = 'none';
+                processButton.disabled = true;
+            } else {
+                // 保存服务器返回的文件名
+                serverFilename = data.filename;
+                showStatus('文件上传成功', 'success');
             }
         })
-        .catch(error => showStatus('上传失败: ' + error, 'error'));
+        .catch(error => {
+            showStatus('上传失败: ' + error, 'error');
+            // 上传失败时重置状态
+            currentFile = null;
+            serverFilename = null;
+            fileInfo.style.display = 'none';
+            processButton.disabled = true;
+        });
     });
     
     // 移除文件
     removeFile.addEventListener('click', function() {
         currentFile = null;
+        serverFilename = null;
         fileInput.value = '';
         fileInfo.style.display = 'none';
         processButton.disabled = true;
@@ -88,7 +106,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 开始处理
     processButton.addEventListener('click', function() {
-        if (!currentFile) return;
+        if (!currentFile || !serverFilename) {
+            showStatus('请先选择文件', 'error');
+            return;
+        }
         
         processButton.disabled = true;
         showStatus('正在处理...', 'info');
@@ -98,9 +119,16 @@ document.addEventListener('DOMContentLoaded', function() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ filename: currentFile.name })
+            body: JSON.stringify({ 
+                filename: serverFilename  // 使用服务器端的文件名
+            })
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('处理请求失败');
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.error) {
                 showStatus(data.error, 'error');
