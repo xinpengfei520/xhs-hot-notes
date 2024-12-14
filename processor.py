@@ -38,7 +38,7 @@ def get_note_content(url, headers):
         logging.error(f"处理URL时出错: {url}, 错误信息: {str(e)}")
         return '', ''
 
-def process_notes(input_file, cookie):
+def process_notes(input_file, cookie, progress_callback=None):
     """处理小红书笔记主函数"""
     try:
         logging.info(f"正在处理文件: {input_file}")
@@ -53,6 +53,9 @@ def process_notes(input_file, cookie):
         df['笔记详情'] = ''
         df['话题标签'] = ''
         
+        total_notes = len(df)
+        logging.info(f"总笔记数: {total_notes}")
+        
         # 处理每一行数据
         for index, row in df.iterrows():
             url = row[0]  # 第一列是笔记地址
@@ -62,6 +65,10 @@ def process_notes(input_file, cookie):
             
             df.at[index, '笔记详情'] = detail
             df.at[index, '话题标签'] = tags
+            
+            if progress_callback:
+                logging.info(f"更新进度: {index + 1}/{total_notes}")
+                progress_callback(index + 1, total_notes)
         
         # 生成输出文件名
         output_dir = os.path.dirname(input_file)

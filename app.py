@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, send_file
 from werkzeug.utils import secure_filename
 import os
 from processor import process_notes
@@ -7,6 +7,20 @@ import logging
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
+app.secret_key = 'your-secret-key'  # 添加 secret key 用于 session
+
+# 存储处理进度
+processing_progress = {}
+
+def update_progress(current, total):
+    """更新处理进度"""
+    progress = {
+        'current': current,
+        'total': total,
+        'percentage': int((current / total) * 100)
+    }
+    processing_progress[session.get('user_id')] = progress
+    logging.info(f"更新进度: {progress}")  # 添加进度日志
 
 # 在应用启动时确保上传目录存在并有正确的权限
 upload_dir = app.config['UPLOAD_FOLDER']
@@ -64,26 +78,46 @@ def set_cookie():
 
 @app.route('/process', methods=['POST'])
 def start_process():
+    if 'user_id' not in session:
+        session['user_id'] = os.urandom(16).hex()
+    
+    # 清除之前的进度
+    processing_progress[session.get('user_id')] = {}
+    
     filename = request.json.get('filename')
     if not filename:
-        logging.error('未提供文件名')
         return jsonify({'error': '请先上传文件'}), 400
         
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    logging.info(f'处理文件: {filepath}')
-    
     if not os.path.exists(filepath):
-        logging.error(f'文件不存在: {filepath}')
         return jsonify({'error': '文件不存在'}), 400
     
     try:
-        output_file = process_notes(filepath, current_cookie)
+        output_file = process_notes(filepath, current_cookie, update_progress)
         return jsonify({
             'message': '处理完成',
             'output_file': output_file
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/progress')
+def get_progress():
+    """获取处理进度"""
+    user_id = session.get('user_id')
+    progress = processing_progress.get(user_id, {})
+    logging.info(f"获取进度 user_id: {user_id}, progress: {progress}")  # 添加进度日志
+    return jsonify(progress)
+
+@app.route('/download/<filename>')
+def download_file(filename):
+    """下载处理后的文件"""
+    try:
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        return send_file(filepath, as_attachment=True)
+    except Exception as e:
+        logging.error(f"下载文件失败: {str(e)}")
+        return jsonify({'error': '文件下载失败'}), 400
 
 if __name__ == '__main__':
     app.run(debug=True) 

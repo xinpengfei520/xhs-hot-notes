@@ -8,9 +8,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const cookieInput = document.getElementById('cookieInput');
     const cookieButton = document.getElementById('cookieButton');
     const status = document.getElementById('status');
+    const downloadButton = document.getElementById('downloadButton');
     
     let currentFile = null;
     let serverFilename = null;
+    let outputFilename = null;
     
     // 文件选择
     selectButton.addEventListener('click', () => fileInput.click());
@@ -112,7 +114,22 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         processButton.disabled = true;
-        showStatus('正在处理...', 'info');
+        downloadButton.style.display = 'none';  // 隐藏下载按钮
+        showStatus('准备开始处理...', 'info');
+        
+        // 开始轮询进度
+        const progressInterval = setInterval(() => {
+            fetch('/progress')
+                .then(response => response.json())
+                .then(progress => {
+                    console.log('Progress:', progress);  // 添加调试日志
+                    if (progress.current && progress.total) {
+                        const percentage = progress.percentage || Math.round((progress.current / progress.total) * 100);
+                        showStatus(`正在处理第 ${progress.current} 条笔记，共 ${progress.total} 条 (${percentage}%)`, 'info');
+                    }
+                })
+                .catch(error => console.error('获取进度失败:', error));  // 添加错误日志
+        }, 1000);
         
         fetch('/process', {
             method: 'POST',
@@ -120,7 +137,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ 
-                filename: serverFilename  // 使用服务器端的文件名
+                filename: serverFilename
             })
         })
         .then(response => {
@@ -133,13 +150,23 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.error) {
                 showStatus(data.error, 'error');
             } else {
-                showStatus('处理完成: ' + data.output_file, 'success');
+                outputFilename = data.output_file.split('/').pop();  // 获取文件名
+                showStatus('处理完成！', 'success');
+                downloadButton.style.display = 'inline-block';  // 显示下载按钮
             }
         })
         .catch(error => showStatus('处理失败: ' + error, 'error'))
         .finally(() => {
             processButton.disabled = false;
+            clearInterval(progressInterval);
         });
+    });
+    
+    // 添加下载按钮事件处理
+    downloadButton.addEventListener('click', function() {
+        if (!outputFilename) return;
+        
+        window.location.href = `/download/${outputFilename}`;
     });
     
     function showStatus(message, type) {
